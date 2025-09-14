@@ -1511,10 +1511,10 @@ function renderDashboardPage() {
                             return `
                             <li class="compact-list-item">
                                 <span class="transaction-icon ${isPositive ? 'positive' : 'negative'}">${icon}</span>
-                                <div class="transaction-details">
+                                <span class="transaction-main-info">
                                     <strong>${t.customerName}</strong>
                                     <small>${new Date(t.date).toLocaleDateString('de-DE')} - ${t.type}</small>
-                                </div>
+                                </span>
                                 <span class="${amountClass} transaction-amount">${isPositive ? '+' : ''}${formatCurrency(t.amount)} €</span>
                             </li>`
                         }).join('')}
@@ -2064,8 +2064,7 @@ function getFilteredReportData() {
 function handleExportPDF() {
     const { filteredTransactions, revenueFiltered, consumptionFiltered, timeLabel } = getFilteredReportData();
     const { reportsUserFilter } = appState;
-    // Fix: Instantiate jsPDF from the window object to ensure it's found.
-    const doc = new (window as any).jspdf.jsPDF();
+    const doc = new jspdf.jsPDF();
 
     doc.setFontSize(18);
     doc.text("Bericht & Statistiken - PfotenCard", 14, 22);
@@ -2261,10 +2260,10 @@ function renderReportsPage() {
                         return `
                         <li class="compact-list-item">
                             <span class="transaction-icon ${isPositive ? 'positive' : 'negative'}">${icon}</span>
-                            <div class="transaction-details">
+                            <span class="transaction-main-info">
                                 <strong>${t.type} (Kunde: ${t.customerName})</strong>
                                 <small>Gebucht von ${t.bookedBy || 'System'} am ${new Date(t.date).toLocaleDateString('de-DE')}</small>
-                            </div>
+                            </span>
                             <span class="${amountClass} transaction-amount">${isPositive ? '+' : ''}${formatCurrency(t.amount)} €</span>
                         </li>`
                     }).join('') : `<li class="no-documents">Keine Transaktionen für die gewählten Filter gefunden.</li>`}
