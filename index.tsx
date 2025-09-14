@@ -4,6 +4,11 @@
  */
 import { GoogleGenAI } from "@google/genai";
 
+// --- Declarations for external libraries ---
+declare var jsPDF: any;
+declare var XLSX: any;
+
+
 // --- CONFIGURATION ---
 
 const REQUIREMENT_IDS = {
@@ -168,6 +173,47 @@ const mockCustomers = [
     }
 ];
 
+// Generate 50 additional mock customers
+const firstNames = ["Lukas", "Leon", "Felix", "Jonas", "Elias", "Maximilian", "Paul", "Ben", "Noah", "Finn", "Mia", "Emma", "Hannah", "Sophia", "Anna", "Lea", "Emilia", "Marie", "Lena", "Leonie"];
+const lastNames = ["Müller", "Schmidt", "Schneider", "Fischer", "Weber", "Meyer", "Wagner", "Becker", "Schulz", "Hoffmann", "Schäfer", "Koch", "Bauer", "Richter", "Klein", "Wolf", "Schröder", "Neumann", "Schwarz", "Zimmermann"];
+const dogNames = ["Buddy", "Charlie", "Max", "Rocky", "Toby", "Jack", "Duke", "Bear", "Leo", "Oscar", "Bella", "Lucy", "Daisy", "Molly", "Sadie", "Lola", "Zoe", "Stella", "Chloe", "Penny"];
+
+for (let i = 0; i < 50; i++) {
+    const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
+    const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
+    const dogName = dogNames[Math.floor(Math.random() * dogNames.length)];
+    const name = `${firstName} ${lastName}`;
+    const email = `${firstName.toLowerCase()}.${lastName.toLowerCase()}${i}@example.com`;
+    const creationDate = new Date();
+    creationDate.setDate(creationDate.getDate() - Math.floor(Math.random() * 365));
+    const firstTransactionDate = new Date(creationDate);
+    firstTransactionDate.setDate(firstTransactionDate.getDate() + 1);
+    
+    mockCustomers.push({
+        id: mockCustomers.length + 1,
+        internalId: Math.random().toString(36).substring(2, 10),
+        name: name,
+        dogName: dogName,
+        chipNumber: `9870000${Math.floor(10000000 + Math.random() * 90000000)}`,
+        email: email,
+        password: "password123",
+        phone: `+49 17${Math.floor(10000000 + Math.random() * 90000000)}`,
+        status: "active",
+        credits: parseFloat((Math.random() * 200).toFixed(2)),
+        levelId: Math.floor(Math.random() * 4) + 1,
+        levelUpHistory: { 1: creationDate.toISOString() },
+        isVip: Math.random() < 0.1,
+        memberSince: creationDate.toISOString().split('T')[0],
+        createdBy: ["Christian", "Sophie", "Sandra", "Susi"][Math.floor(Math.random() * 4)],
+        transactions: [
+             { id: Date.now() + i*2+1, type: "Aufladung", amount: 150, date: firstTransactionDate.toISOString().split('T')[0], bookedBy: "Christian" },
+             { id: Date.now() + i*2+2, type: "Abbuchung: Gruppenstunde", amount: -15, date: new Date(new Date().setDate(new Date().getDate() - Math.floor(Math.random()*30))).toISOString().split('T')[0], bookedBy: "Sophie", meta: { requirementId: REQUIREMENT_IDS.GRUPPENSTUNDE } },
+        ],
+        documents: []
+    });
+}
+
+
 const mockUsers = [
     { id: 1, name: "Christian", username: "Christian", email: "christian@dogslife.de", password: "password123", role: "admin", createdDate: "2025-08-12", avatarColor: '#4285F4' },
     { id: 2, name: "Sophie", username: "Sophie", email: "sophie@dogslife.de", password: "password123", role: "employee", createdDate: "2025-08-12", avatarColor: '#A142F4' },
@@ -200,6 +246,8 @@ const appState = {
     isConfirmModalOpen: false,
     confirmModalData: null,
     isOnline: navigator.onLine,
+    reportsTimeFilter: 'this_year' as string,
+    reportsUserFilter: 'Alle',
 };
 
 const root = document.getElementById('root');
@@ -372,6 +420,13 @@ const ICONS = {
 
 // --- DATA HELPERS ---
 const DateHelpers = {
+    isToday: (date) => {
+        const d = new Date(date);
+        const today = new Date();
+        return d.getDate() === today.getDate() &&
+               d.getMonth() === today.getMonth() &&
+               d.getFullYear() === today.getFullYear();
+    },
     isDateInThis: (date, unit) => {
         const d = new Date(date);
         const today = new Date();
@@ -390,6 +445,27 @@ const DateHelpers = {
             return d.getFullYear() === today.getFullYear();
         }
         return false;
+    },
+    isDateInPeriod: (dateStr, period) => {
+        const d = new Date(dateStr);
+        const today = new Date();
+        switch (period) {
+            case 'today':
+                return DateHelpers.isToday(d);
+            case 'this_month':
+                return d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
+            case 'this_year':
+                return d.getFullYear() === today.getFullYear();
+            default:
+                if (period && period.length === 4 && !isNaN(parseInt(period))) { // Year, e.g. "2025"
+                    return d.getFullYear() === parseInt(period, 10);
+                }
+                if (period && period.length === 7 && period.includes('-')) { // Month, e.g. "2025-06"
+                    const [year, month] = period.split('-').map(Number);
+                    return d.getFullYear() === year && d.getMonth() === month - 1;
+                }
+                return false;
+        }
     }
 };
 
@@ -1007,20 +1083,16 @@ function handleStatCardClick(modalType) {
             items = activeCustomersMonth;
             break;
         // Reports Page
-        case 'revenue-year':
-            title = 'Gesamtumsatz (Jahr)';
+        case 'deposits-today':
+            title = 'Aufladungen (Heute)';
             type = 'transaction';
-            items = transactions.filter(t => t.amount > 0 && DateHelpers.isDateInThis(t.date, 'year'));
+            items = transactions.filter(t => t.amount > 0 && DateHelpers.isToday(t.date));
             break;
-        case 'consumption-year':
-            title = 'Verbrauch (Jahr)';
-            type = 'transaction';
-            items = transactions.filter(t => t.amount < 0 && DateHelpers.isDateInThis(t.date, 'year'));
-            break;
-        case 'deposits-month':
-            title = 'Aufladungen (Monat)';
-            type = 'transaction';
-            items = transactions.filter(t => t.amount > 0 && DateHelpers.isDateInThis(t.date, 'month'));
+        // Users Page
+        case 'new-customers-month':
+            title = 'Neue Kunden (Dieser Monat)';
+            type = 'customer';
+            items = appState.customers.filter(c => DateHelpers.isDateInThis(c.memberSince, 'month'));
             break;
     }
 
@@ -1925,6 +1997,132 @@ function renderCustomerProfilePage(customerId) {
     return container;
 }
 
+// --- EXPORT FUNCTIONS ---
+function getFilteredReportData() {
+    const { transactions } = getScopedData();
+    const { reportsTimeFilter, reportsUserFilter } = appState;
+    
+    const filteredTransactions = transactions.filter(t => {
+        const timeMatch = DateHelpers.isDateInPeriod(t.date, reportsTimeFilter);
+        const userMatch = reportsUserFilter === 'Alle' || t.bookedBy === reportsUserFilter;
+        return timeMatch && userMatch;
+    });
+    
+    const revenueFiltered = filteredTransactions.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0);
+    const consumptionFiltered = filteredTransactions.filter(t => t.amount < 0).reduce((sum, t) => sum + t.amount, 0);
+    const revenueToday = transactions.filter(t => t.amount > 0 && DateHelpers.isToday(t.date)).reduce((sum, t) => sum + t.amount, 0);
+
+    const monthNames = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+    let timeLabel;
+    const yearMatch = reportsTimeFilter.match(/^(\d{4})$/);
+    const monthMatch = reportsTimeFilter.match(/^(\d{4})-(\d{2})$/);
+    if (reportsTimeFilter === 'today') timeLabel = 'Heute';
+    else if (reportsTimeFilter === 'this_month') timeLabel = 'Dieser Monat';
+    else if (reportsTimeFilter === 'this_year') timeLabel = 'Dieses Jahr';
+    else if (yearMatch) timeLabel = yearMatch[1];
+    else if (monthMatch) timeLabel = `${monthNames[parseInt(monthMatch[2], 10)-1]} ${monthMatch[1]}`;
+    else timeLabel = 'Zeitraum';
+    
+    return {
+        filteredTransactions,
+        revenueFiltered,
+        consumptionFiltered,
+        revenueToday,
+        timeLabel
+    };
+}
+
+
+function handleExportPDF() {
+    const { filteredTransactions, revenueFiltered, consumptionFiltered, timeLabel } = getFilteredReportData();
+    const { reportsUserFilter } = appState;
+    const doc = new jsPDF.default();
+
+    doc.setFontSize(18);
+    doc.text("Bericht & Statistiken - PfotenCard", 14, 22);
+    
+    doc.setFontSize(11);
+    doc.setTextColor(100);
+    doc.text(`Exportiert am: ${new Date().toLocaleDateString('de-DE')}`, 14, 30);
+    doc.text(`Filter - Zeitraum: ${timeLabel}`, 14, 35);
+    doc.text(`Filter - Mitarbeiter: ${reportsUserFilter}`, 14, 40);
+
+    doc.setFontSize(12);
+    doc.setTextColor(0);
+    doc.text(`Zusammenfassung`, 14, 50);
+    doc.text(`Aufladungen: ${formatCurrency(revenueFiltered)} €`, 14, 56);
+    doc.text(`Abbuchungen: ${formatCurrency(consumptionFiltered)} €`, 14, 62);
+    
+    const tableColumn = ["Datum", "Typ", "Kunde", "Gebucht von", "Betrag (€)"];
+    const tableRows = [];
+
+    filteredTransactions.forEach(t => {
+        const transactionData = [
+            new Date(t.date).toLocaleDateString('de-DE'),
+            t.type,
+            t.customerName,
+            t.bookedBy || 'N/A',
+            formatCurrency(t.amount)
+        ];
+        tableRows.push(transactionData);
+    });
+
+    doc.autoTable({
+        head: [tableColumn],
+        body: tableRows,
+        startY: 70,
+        headStyles: { fillColor: [38, 50, 56] }, // sidebar-bg color
+        styles: { halign: 'right' },
+        columnStyles: { 
+            1: { halign: 'left' }, 
+            2: { halign: 'left' },
+            3: { halign: 'left' }
+        },
+    });
+
+    doc.save(`PfotenCard_Bericht_${new Date().toISOString().split('T')[0]}.pdf`);
+}
+
+function handleExportExcel() {
+    const { filteredTransactions, revenueFiltered, consumptionFiltered, timeLabel } = getFilteredReportData();
+    const { reportsUserFilter } = appState;
+    
+    const summaryData = [
+        { A: "Bericht & Statistiken - PfotenCard" },
+        {},
+        { A: "Exportiert am:", B: new Date().toLocaleDateString('de-DE') },
+        { A: "Filter - Zeitraum:", B: timeLabel },
+        { A: "Filter - Mitarbeiter:", B: reportsUserFilter },
+        {},
+        { A: "Zusammenfassung" },
+        { A: "Aufladungen:", B: `${formatCurrency(revenueFiltered)} €` },
+        { A: "Abbuchungen:", B: `${formatCurrency(consumptionFiltered)} €` },
+        {},
+        { A: "Datum", B: "Typ", C: "Kunde", D: "Gebucht von", E: "Betrag (€)" }
+    ];
+    
+    const transactionRows = filteredTransactions.map(t => ({
+        A: new Date(t.date).toLocaleDateString('de-DE'),
+        B: t.type,
+        C: t.customerName,
+        D: t.bookedBy || 'N/A',
+        E: t.amount
+    }));
+
+    const exportData = summaryData.concat(transactionRows);
+    
+    const ws = XLSX.utils.json_to_sheet(exportData, { skipHeader: true });
+
+    // Set column widths for better readability
+    ws['!cols'] = [ {wch:12}, {wch:40}, {wch:25}, {wch:15}, {wch:12} ];
+    
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Bericht");
+    XLSX.writeFile(wb, `PfotenCard_Bericht_${new Date().toISOString().split('T')[0]}.xlsx`);
+}
+
+
+
 function renderReportsPage() {
     const container = document.createElement('div');
     container.className = 'page-container';
@@ -1934,36 +2132,100 @@ function renderReportsPage() {
         'Berichte & Statistiken',
         'Analysiere wichtige Leistungsindikatoren Deiner Hundeschule.',
         [
-            { id: 'export-pdf-btn', text: 'Export PDF', className: 'btn-secondary', onClick: () => alert('PDF Export in Kürze verfügbar!') },
-            { id: 'export-excel-btn', text: 'Export Excel', className: 'btn-secondary', onClick: () => alert('Excel Export in Kürze verfügbar!') }
+            { id: 'export-pdf-btn', text: 'Export PDF', className: 'btn-secondary', onClick: handleExportPDF },
+            { id: 'export-excel-btn', text: 'Export Excel', className: 'btn-secondary', onClick: handleExportExcel }
         ]
     );
 
     const content = document.createElement('div');
     const { customers, transactions, activeCustomersMonth } = getScopedData();
+    const { reportsTimeFilter, reportsUserFilter } = appState;
     
+    const filteredTransactions = transactions.filter(t => {
+        const timeMatch = DateHelpers.isDateInPeriod(t.date, reportsTimeFilter);
+        const userMatch = reportsUserFilter === 'Alle' || t.bookedBy === reportsUserFilter;
+        return timeMatch && userMatch;
+    });
+
     const customerTransactions = customers.map(c => ({
         ...c,
         transactionCount: c.transactions.filter(t => t.amount < 0 && DateHelpers.isDateInThis(t.date, 'month')).length
     })).sort((a, b) => b.transactionCount - a.transactionCount);
 
-    const revenueYear = transactions.filter(t => t.amount > 0 && DateHelpers.isDateInThis(t.date, 'year')).reduce((sum, t) => sum + t.amount, 0);
-    const consumptionYear = transactions.filter(t => t.amount < 0 && DateHelpers.isDateInThis(t.date, 'year')).reduce((sum, t) => sum + t.amount, 0);
-    const depositsMonth = transactions.filter(t => t.amount > 0 && DateHelpers.isDateInThis(t.date, 'month')).reduce((sum, t) => sum + t.amount, 0);
+    const revenueFiltered = filteredTransactions.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0);
+    const consumptionFiltered = filteredTransactions.filter(t => t.amount < 0).reduce((sum, t) => sum + t.amount, 0);
+    const revenueToday = transactions.filter(t => t.amount > 0 && DateHelpers.isToday(t.date)).reduce((sum, t) => sum + t.amount, 0);
 
+    const monthNames = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+    let timeLabel;
+    const yearMatch = reportsTimeFilter.match(/^(\d{4})$/);
+    const monthMatch = reportsTimeFilter.match(/^(\d{4})-(\d{2})$/);
+    if (reportsTimeFilter === 'today') timeLabel = 'Heute';
+    else if (reportsTimeFilter === 'this_month') timeLabel = 'Dieser Monat';
+    else if (reportsTimeFilter === 'this_year') timeLabel = 'Dieses Jahr';
+    else if (yearMatch) timeLabel = yearMatch[1];
+    else if (monthMatch) timeLabel = `${monthNames[parseInt(monthMatch[2], 10)-1]} ${monthMatch[1]}`;
+    else timeLabel = 'Zeitraum';
+
+
+    const transactionDates = transactions.map(t => new Date(t.date));
+    const months = new Set<string>();
+    const years = new Set<string>();
+    transactionDates.forEach(d => {
+        if (!isNaN(d.getTime())) {
+            const year = d.getFullYear();
+            const month = d.getMonth() + 1;
+            years.add(year.toString());
+            months.add(`${year}-${month.toString().padStart(2, '0')}`);
+        }
+    });
+    const sortedYears = Array.from(years).sort((a,b) => b.localeCompare(a));
+    const sortedMonths = Array.from(months).sort((a,b) => b.localeCompare(a));
+    
     content.innerHTML = `
         <div class="summary-card-grid">
-            ${renderSummaryCard('Gesamtumsatz (Jahr)', `${formatCurrency(revenueYear)} €`, 'green', ICONS.stat_revenue, 'revenue-year')}
-            ${renderSummaryCard('Verbrauch (Jahr)', `${formatCurrency(consumptionYear)} €`, 'orange', ICONS.stat_consumption, 'consumption-year')}
+            ${renderSummaryCard(`Aufladungen (${timeLabel})`, `${formatCurrency(revenueFiltered)} €`, 'green', ICONS.stat_revenue, null)}
+            ${renderSummaryCard(`Abbuchungen (${timeLabel})`, `${formatCurrency(consumptionFiltered)} €`, 'orange', ICONS.stat_consumption, null)}
             ${renderSummaryCard('Aktive Kunden (Monat)', activeCustomersMonth.length.toString(), 'blue', ICONS.stat_user_check, 'active-customers-month')}
-            ${renderSummaryCard('Aufladungen (Monat)', `${formatCurrency(depositsMonth)} €`, 'purple', ICONS.stat_revenue, 'deposits-month')}
+            ${renderSummaryCard('Aufladungen (Heute)', `${formatCurrency(revenueToday)} €`, 'purple', ICONS.stat_revenue, 'deposits-today')}
+        </div>
+        <div class="card filter-bar">
+             <div class="filter-group">
+                <label for="time-filter">Zeitraum</label>
+                <div class="filter-controls">
+                    <select id="time-filter">
+                        <option value="this_year" ${reportsTimeFilter === 'this_year' ? 'selected' : ''}>Dieses Jahr</option>
+                        <option value="this_month" ${reportsTimeFilter === 'this_month' ? 'selected' : ''}>Dieser Monat</option>
+                        <option value="today" ${reportsTimeFilter === 'today' ? 'selected' : ''}>Heute</option>
+                        <optgroup label="Jahre">
+                            ${sortedYears.map(y => `<option value="${y}" ${reportsTimeFilter === y ? 'selected' : ''}>${y}</option>`).join('')}
+                        </optgroup>
+                        <optgroup label="Monate">
+                            ${sortedMonths.map(m => {
+                                const [year, month] = m.split('-');
+                                const label = `${monthNames[parseInt(month, 10)-1]} ${year}`;
+                                return `<option value="${m}" ${reportsTimeFilter === m ? 'selected' : ''}>${label}</option>`;
+                            }).join('')}
+                        </optgroup>
+                    </select>
+                </div>
+            </div>
+            <div class="filter-group">
+                <label for="user-filter">Mitarbeiter</label>
+                <div class="filter-controls">
+                    <select id="user-filter">
+                        <option value="Alle">Alle</option>
+                        ${appState.users.map(u => `<option value="${u.name}" ${reportsUserFilter === u.name ? 'selected' : ''}>${u.name}</option>`).join('')}
+                    </select>
+                </div>
+            </div>
         </div>
          <div class="content-grid-half">
             <div class="card">
-                <div class="card-header"><h3>Tagesumsätze</h3></div>
+                <div class="card-header"><h3>Transaktionen (${filteredTransactions.length})</h3></div>
                 <div class="card-content" style="padding: 0;">
                     <ul class="compact-list">
-                    ${transactions.slice(0, 5).map(t => {
+                    ${filteredTransactions.length > 0 ? filteredTransactions.map(t => {
                         const isPositive = t.amount > 0;
                         const icon = isPositive ? ICONS.transaction_plus : ICONS.transaction_minus;
                         const amountClass = isPositive ? 'text-green' : 'text-red';
@@ -1976,7 +2238,7 @@ function renderReportsPage() {
                             </span>
                             <span class="${amountClass} transaction-amount">${isPositive ? '+' : ''}${formatCurrency(t.amount)} €</span>
                         </li>`
-                    }).join('')}
+                    }).join('') : `<li class="no-documents">Keine Transaktionen für die gewählten Filter gefunden.</li>`}
                     </ul>
                 </div>
             </div>
@@ -2007,6 +2269,16 @@ function renderReportsPage() {
         if (card) {
             handleStatCardClick(card.getAttribute('data-modal-type'));
         }
+    });
+
+    content.querySelector('#time-filter')?.addEventListener('change', (e) => {
+        appState.reportsTimeFilter = (e.target as HTMLSelectElement).value;
+        render();
+    });
+
+    content.querySelector('#user-filter')?.addEventListener('change', (e) => {
+        appState.reportsUserFilter = (e.target as HTMLSelectElement).value;
+        render();
     });
 
     container.appendChild(pageHeader);
@@ -2043,13 +2315,13 @@ function renderUsersPage() {
     summaryGrid.className = 'summary-card-grid';
     const admins = appState.users.filter(u => u.role === 'admin');
     const employees = appState.users.filter(u => u.role === 'employee');
-    const newThisMonth = appState.users.filter(u => DateHelpers.isDateInThis(u.createdDate, 'month'));
+    const newCustomersThisMonth = appState.customers.filter(c => DateHelpers.isDateInThis(c.memberSince, 'month'));
     
     summaryGrid.innerHTML = `
         ${renderSummaryCard('Benutzer Gesamt', appState.users.length.toString(), 'blue', ICONS.info_users, null)}
         ${renderSummaryCard('Admins', admins.length.toString(), 'purple', ICONS.stat_users, null)}
         ${renderSummaryCard('Mitarbeiter', employees.length.toString(), 'orange', ICONS.stat_users, null)}
-        ${renderSummaryCard('Neu (Monat)', newThisMonth.length.toString(), 'green', ICONS.stat_users, null)}
+        ${renderSummaryCard('Kunden Neu (Monat)', newCustomersThisMonth.length.toString(), 'green', ICONS.stat_user_check, 'new-customers-month')}
     `;
     container.appendChild(summaryGrid);
 
@@ -2140,6 +2412,13 @@ function renderUsersPage() {
             const userId = parseInt(btn.getAttribute('data-user-id') || '0');
             if (userId) openDeleteModal(userId);
         });
+    });
+
+    tableContainer.addEventListener('click', (e) => {
+        const card = (e.target as HTMLElement).closest('[data-modal-type]');
+        if (card) {
+            handleStatCardClick(card.getAttribute('data-modal-type'));
+        }
     });
     
     container.appendChild(tableContainer);
