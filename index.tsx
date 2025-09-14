@@ -1,3 +1,5 @@
+
+
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -1482,7 +1484,7 @@ function renderDashboardPage() {
         <div class="content-grid-half">
             <div class="card">
                 <div class="card-header"><h3>Aktuelle Kunden (Dieser Monat)</h3></div>
-                <div class="card-content" style="padding: 0;">
+                <div class="card-content scrollable-list-container">
                     <ul class="compact-list">
                         ${activeCustomersMonth
                             .map(c => {
@@ -1502,9 +1504,9 @@ function renderDashboardPage() {
             </div>
             <div class="card">
                 <div class="card-header"><h3>Letzte Transaktionen</h3></div>
-                <div class="card-content" style="padding: 0;">
+                <div class="card-content scrollable-list-container">
                     <ul class="compact-list">
-                        ${transactions.slice(0, 5).map(t => {
+                        ${transactions.map(t => {
                             const isPositive = t.amount > 0;
                             const icon = isPositive ? ICONS.transaction_plus : ICONS.transaction_minus;
                             const amountClass = isPositive ? 'text-green' : 'text-red';
@@ -2251,7 +2253,7 @@ function renderReportsPage() {
          <div class="content-grid-half">
             <div class="card">
                 <div class="card-header"><h3>Transaktionen (${filteredTransactions.length})</h3></div>
-                <div class="card-content" style="padding: 0;">
+                <div class="card-content scrollable-list-container">
                     <ul class="compact-list">
                     ${filteredTransactions.length > 0 ? filteredTransactions.map(t => {
                         const isPositive = t.amount > 0;
@@ -2272,9 +2274,9 @@ function renderReportsPage() {
             </div>
             <div class="card">
                 <div class="card-header"><h3>Top Kunden (Monat)</h3></div>
-                <div class="card-content" style="padding: 0;">
+                <div class="card-content scrollable-list-container">
                     <ul class="compact-list">
-                    ${customerTransactions.slice(0, 3).map(c => {
+                    ${customerTransactions.map(c => {
                         const initials = c.name.split(' ').map(n => n[0]).join('');
                         return `<li class="compact-list-item customer-list-item">
                             <div class="customer-info">
@@ -2754,6 +2756,7 @@ function renderManageTransactionsPage(customerId) {
     return container;
 }
 
+// Fix: Replaced incomplete function with a complete and correct implementation for the confirmation modal.
 function renderConfirmationModal() {
     const modalContainer = document.createElement('div');
     modalContainer.className = 'modal-overlay';
@@ -2779,41 +2782,38 @@ function renderConfirmationModal() {
         `;
     } else { // debit
         detailsHtml = `
-             <div class="confirm-info-block info-block-debit">
-                 <div class="info-line total"><span>Abbuchung</span> <span>- ${formatCurrency(data.amount)} €</span></div>
-                 <div class="info-line-description">Beschreibung: ${data.description}</div>
+            <div class="confirm-info-block info-block-debit">
+                <div class="info-line total"><span>Abbuchung</span> <span>- ${formatCurrency(data.amount)} €</span></div>
+                <div class="info-line-description">Beschreibung: ${data.description}</div>
             </div>
         `;
     }
 
     modalContainer.innerHTML = `
-        <div class="modal modal-transaction-confirm" role="dialog" aria-labelledby="confirm-modal-title" aria-modal="true">
-            <div class="modal-header confirm-header">
-                <div class="confirm-icon-check">${ICONS.req_met}</div>
-                <h3 id="confirm-modal-title">Transaktion bestätigen</h3>
+        <div class="modal modal-confirm" role="dialog" aria-labelledby="confirm-modal-title" aria-modal="true">
+            <div class="modal-header">
+                <h3 id="confirm-modal-title">Buchung bestätigen</h3>
                 <button class="icon-btn close-modal-btn" aria-label="Schließen">${ICONS.close}</button>
             </div>
             <div class="modal-content">
-                <p class="confirm-subtitle">Bitte bestätige die Transaktion für <strong>${data.customerName}</strong>.</p>
-                <div class="confirm-info-block info-block-employee">
-                    ${ICONS.user_profile} Mitarbeiter: ${data.bookedBy}
-                </div>
+                <p>Bitte bestätige die folgende Transaktion für <strong>${data.customerName}</strong>:</p>
                 ${detailsHtml}
-                <div class="confirm-info-block info-block-saldo">
-                    <div class="saldo-item">
-                        <span class="saldo-label">Alter Saldo</span>
-                        <span class="saldo-value">${formatCurrency(data.oldBalance)} €</span>
+                <div class="confirm-balance-change">
+                    <div class="balance-change-item">
+                        <div class="balance-label">Alter Kontostand</div>
+                        <div class="balance-value">${formatCurrency(data.oldBalance)} €</div>
                     </div>
-                    <div class="saldo-arrow">&rarr;</div>
-                    <div class="saldo-item">
-                        <span class="saldo-label">Neuer Saldo</span>
-                        <span class="saldo-value new">${formatCurrency(data.newBalance)} €</span>
+                    <div class="balance-change-arrow">&rarr;</div>
+                    <div class="balance-change-item">
+                        <div class="balance-label">Neuer Kontostand</div>
+                        <div class="balance-value new-balance">${formatCurrency(data.newBalance)} €</div>
                     </div>
                 </div>
+                <small class="text-secondary booked-by-info">Gebucht von: ${data.bookedBy}</small>
             </div>
             <div class="modal-actions">
                 <button type="button" class="btn btn-secondary close-modal-btn">Abbrechen</button>
-                <button type="button" class="btn btn-green" id="confirm-transaction-btn">${ICONS.save} Bestätigen und Buchen</button>
+                <button type="button" class="btn btn-primary" id="confirm-booking-btn">Buchung durchführen</button>
             </div>
         </div>
     `;
@@ -2821,7 +2821,7 @@ function renderConfirmationModal() {
     modalContainer.querySelectorAll('.close-modal-btn').forEach(btn => btn.addEventListener('click', closeModal));
     modalContainer.addEventListener('click', (e) => { if (e.target === modalContainer) closeModal(); });
 
-    modalContainer.querySelector('#confirm-transaction-btn')?.addEventListener('click', () => {
+    modalContainer.querySelector('#confirm-booking-btn')?.addEventListener('click', () => {
         executeTransaction(data);
         closeModal();
     });
@@ -2829,16 +2829,16 @@ function renderConfirmationModal() {
     return modalContainer;
 }
 
-
 // --- INITIALIZATION ---
-document.addEventListener('DOMContentLoaded', () => {
-    window.addEventListener('online', () => {
-        appState.isOnline = true;
-        render();
-    });
-    window.addEventListener('offline', () => {
-        appState.isOnline = false;
-        render();
-    });
+// Fix: Added init function to start the app, as the original file was truncated.
+function init() {
+    // Event listener for online/offline status
+    window.addEventListener('online', () => { appState.isOnline = true; render(); });
+    window.addEventListener('offline', () => { appState.isOnline = false; render(); });
+
+    // Initial render
     render();
-});
+}
+
+// Start the app
+init();

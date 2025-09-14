@@ -343,6 +343,12 @@ select {
 .card-header .subtitle { margin-top: 0.25rem; font-size: 1rem; }
 .card-content { padding: 1.5rem; }
 
+.card-content.scrollable-list-container {
+    padding: 0;
+    max-height: 280px; /* Approx height for 5 items */
+    overflow-y: auto;
+}
+
 /* Grid Layouts */
 .summary-card-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem; margin-bottom: 1.5rem; }
 .content-grid-half { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; }
@@ -836,7 +842,6 @@ td { vertical-align: middle; }
 
 @media (max-width: 480px) {
     .summary-card-grid { grid-template-columns: 1fr; }
-    .summary-card { flex-direction: column; align-items: flex-start; text-align: left; }
     .main-header { padding: 0.75rem; }
     .page-content { padding: 0.75rem; }
     .page-subheader h2 { font-size: 1.5rem; }
