@@ -5,7 +5,7 @@
 import { GoogleGenAI } from "@google/genai";
 
 // --- Declarations for external libraries ---
-declare var jsPDF: any;
+declare var jspdf: any;
 declare var XLSX: any;
 
 
@@ -543,7 +543,7 @@ function renderLoginPage() {
             <form id="login-form">
                 <div class="form-group">
                     <label for="email">E-Mail</label>
-                    <input type="email" id="email" required autocomplete="email" value="peter.wagner@email.com">
+                    <input type="email" id="email" required autocomplete="email" value="christian@dogslife.de">
                 </div>
                 <div class="form-group">
                     <label for="password">Passwort</label>
@@ -1133,7 +1133,7 @@ function renderAppLayout() {
     if (currentUser.role === 'customer') {
         // --- CUSTOMER VIEW ---
         const customerSidebar = document.createElement('aside');
-        customerSidebar.className = 'sidebar'; // Use main sidebar style for dark theme
+        customerSidebar.className = 'sidebar';
         const statusClass = appState.isOnline ? 'online' : 'offline';
         const statusText = appState.isOnline ? 'Online' : 'Offline';
         const initials = currentUser.name.split(' ').map(n => n[0]).join('');
@@ -1179,17 +1179,45 @@ function renderAppLayout() {
              });
         });
 
-        const mainArea = document.createElement('main');
+        const mainArea = document.createElement('div');
         mainArea.className = 'main-area';
-        const pageContent = document.createElement('div');
+
+        const header = document.createElement('header');
+        header.className = 'main-header';
+        header.innerHTML = `
+            <button id="menu-toggle" class="menu-toggle" aria-label="Menü öffnen">${ICONS.menu}</button>
+            <div class="main-header-left">
+                 <div class="header-title-group">
+                    <h1>Meine Karte</h1>
+                    <p>Übersicht Deiner Daten und Guthaben</p>
+                 </div>
+            </div>
+        `;
+
+        const pageContent = document.createElement('main');
         pageContent.className = 'page-content';
         pageContent.appendChild(renderCustomerProfilePage(currentUser.id));
-        mainArea.appendChild(pageContent);
 
+        const overlay = document.createElement('div');
+        overlay.className = 'page-overlay';
+
+        mainArea.appendChild(header);
+        mainArea.appendChild(pageContent);
         if (appState.isConfirmModalOpen) mainArea.appendChild(renderConfirmationModal());
-        
+        mainArea.appendChild(overlay);
+
         layout.appendChild(customerSidebar);
         layout.appendChild(mainArea);
+        
+        const menuToggle = layout.querySelector('#menu-toggle');
+        menuToggle?.addEventListener('click', () => {
+            customerSidebar.classList.add('is-open');
+            overlay.classList.add('is-open');
+        });
+        overlay.addEventListener('click', () => {
+             customerSidebar.classList.remove('is-open');
+             overlay.classList.remove('is-open');
+        });
 
     } else {
         // --- ADMIN & EMPLOYEE VIEW ---
@@ -2036,7 +2064,8 @@ function getFilteredReportData() {
 function handleExportPDF() {
     const { filteredTransactions, revenueFiltered, consumptionFiltered, timeLabel } = getFilteredReportData();
     const { reportsUserFilter } = appState;
-    const doc = new jsPDF.default();
+    // Fix: Access jspdf directly as it is declared globally.
+    const doc = new jspdf.jsPDF();
 
     doc.setFontSize(18);
     doc.text("Bericht & Statistiken - PfotenCard", 14, 22);
@@ -2067,7 +2096,7 @@ function handleExportPDF() {
         tableRows.push(transactionData);
     });
 
-    doc.autoTable({
+    (doc as any).autoTable({
         head: [tableColumn],
         body: tableRows,
         startY: 70,
